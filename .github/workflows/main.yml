@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       video_url:
-        description: 'Public direct URL to a .mp4 video (đường link .mp4 công khai)'
+        description: 'Public direct URL to a .mp4 video (bắt buộc: link .mp4 công khai)'
         required: true
 
 jobs:
@@ -12,8 +12,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout (empty)
+      - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Validate input
+        run: |
+          if [ -z "${{ github.event.inputs.video_url }}" ]; then
+            echo "::error title=Thiếu video_url::Bạn phải dán đường link .mp4 công khai vào ô input khi bấm Run workflow."
+            exit 1
+          fi
+          echo "video_url=${{ github.event.inputs.video_url }}"
 
       - name: Install FFmpeg
         run: |
@@ -23,14 +31,21 @@ jobs:
       - name: Download source video
         run: |
           set -e
-          curl -L "${{ github.event.inputs.video_url }}" -o input.mp4
+          URL="${{ github.event.inputs.video_url }}"
+          echo "Đang tải: $URL"
+          curl -ILs "$URL" | tee headers.txt
+          # Kiểm tra Content-Type có chứa 'video'
+          if ! grep -i "content-type:.*video" headers.txt >/dev/null; then
+            echo "::warning title=Không thấy Content-Type video::Link có thể không trỏ tới file .mp4 trực tiếp. Vẫn thử tải..."
+          fi
+          curl -L "$URL" -o input.mp4
+          test -s input.mp4 || { echo "::error title=Tải video thất bại::File rỗng hoặc không tải được. Kiểm tra link .mp4 công khai."; exit 1; }
           ffprobe -v error -show_entries format=duration -of default=nokey=1:noprint_wrappers=1 input.mp4 | awk '{printf "%.0f\n",$1}' > duration.txt
           echo "Duration (seconds) = $(cat duration.txt)"
 
-      - name: Process video (heavy transform to look very different)
+      - name: Process video (make it look very different)
         run: |
           set -e
-          # Biến đổi mạnh tay: đổi tỉ lệ dọc 9:16 + lật ngang + đổi màu/phong vị + tăng tốc + chỉnh âm thanh
           ffmpeg -y -i input.mp4 \
             -vf "scale=1080:1920:force_original_aspect_ratio=decrease,\
 pad=1080:1920:(ow-iw)/2:(oh-ih)/2,\
@@ -44,10 +59,9 @@ fps=30,format=yuv420p" \
             -af "loudnorm=I=-24:LRA=7:TP=-2,volume=-1.5dB,atempo=1.35" \
             -c:v libx264 -profile:v high -level 4.2 -preset slow -crf 20 \
             -c:a aac -b:a 192k -movflags +faststart \
-            output.mp4
+            output.mp4 || { echo '::error title=Xử lý video thất bại::FFmpeg báo lỗi khi render.'; exit 1; }
 
-          # Xuất thumbnail để xem nhanh
-          ffmpeg -y -ss 00:00:01 -i output.mp4 -vframes 1 thumb.jpg
+          ffmpeg -y -ss 00:00:01 -i output.mp4 -vframes 1 thumb.jpg || true
 
       - name: Upload outputs
         uses: actions/upload-artifact@v4
