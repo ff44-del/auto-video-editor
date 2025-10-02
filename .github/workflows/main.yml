@@ -1,58 +1,9 @@
-name: Auto Video Editor (No-Code)
-
+name: Manual Test
 on:
-  workflow_dispatch:
-    inputs:
-      video_url:
-        description: 'Public direct URL to a .mp4 video (đường link .mp4 công khai)'
-        required: true
+  workflow_dispatch: {}   # bắt buộc có dòng này thì mới có nút Run
 
 jobs:
-  edit:
+  test:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout (empty)
-        uses: actions/checkout@v4
-
-      - name: Install FFmpeg
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
-
-      - name: Download source video
-        run: |
-          set -e
-          curl -L "${{ github.event.inputs.video_url }}" -o input.mp4
-          ffprobe -v error -show_entries format=duration -of default=nokey=1:noprint_wrappers=1 input.mp4 | awk '{printf "%.0f\n",$1}' > duration.txt
-          echo "Duration (seconds) = $(cat duration.txt)"
-
-      - name: Process video (heavy transform to look very different)
-        run: |
-          set -e
-          # Biến đổi mạnh tay: đổi tỉ lệ dọc 9:16 + lật ngang + đổi màu/phong vị + tăng tốc + chỉnh âm thanh
-          ffmpeg -y -i input.mp4 \
-            -vf "scale=1080:1920:force_original_aspect_ratio=decrease,\
-pad=1080:1920:(ow-iw)/2:(oh-ih)/2,\
-hflip,\
-eq=brightness=0.06:contrast=1.25:saturation=1.35:gamma=1.0,\
-hue=h=40,\
-vignette=0.35:0.6,\
-noise=alls=20:allf=t+u,\
-unsharp=5:5:1.0,\
-fps=30,format=yuv420p" \
-            -af "loudnorm=I=-24:LRA=7:TP=-2,volume=-1.5dB,atempo=1.35" \
-            -c:v libx264 -profile:v high -level 4.2 -preset slow -crf 20 \
-            -c:a aac -b:a 192k -movflags +faststart \
-            output.mp4
-
-          # Xuất thumbnail để xem nhanh
-          ffmpeg -y -ss 00:00:01 -i output.mp4 -vframes 1 thumb.jpg
-
-      - name: Upload outputs
-        uses: actions/upload-artifact@v4
-        with:
-          name: edited-video
-          path: |
-            output.mp4
-            thumb.jpg
+      - run: echo "It works"
